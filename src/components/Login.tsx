@@ -4,6 +4,8 @@ import { Label } from './ui/label';
 import { Mail, Lock, Eye, EyeOff, Box } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import api from '../services/api'
+import { Console } from 'console';
 
 interface LoginProps {
   onLogin: () => void;
@@ -18,6 +20,9 @@ interface LoginFormData {
 
 export function Login({ onLogin, onNavigateToRegister, onNavigateToForgotPassword }: LoginProps) {
   const [showPassword, setShowPassword] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
   
   const {
     register,
@@ -25,18 +30,42 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToForgotPasswor
     formState: { errors },
   } = useForm<LoginFormData>();
 
-  const onSubmit = (data: LoginFormData) => {
-    console.log('Login data:', data);
-    onLogin();
+  const onSubmit = async (data: LoginFormData) => {
+    setApiError(null);
+    setLoading(true);
+
+    try{
+      const response = await api.post('login', data);
+
+      const { token, user } = response.data;
+      localStorage.setItem('PrintHub_token', token);
+      localStorage.setItem('PrintHub_user', JSON.stringify(user));
+      
+      onLogin();
+    }catch (error: any) {
+      if (error.response) {
+
+        if (error.response.status === 401 || error.response.status === 422) {
+          setApiError('Credenciais inválidas');
+        } else {
+          setApiError('Erro ao realizar login. Tente novamente.');
+        }
+      } else {
+        
+        setApiError('Erro de conexão com o servidor');
+      }
+    }finally{
+      setLoading(false);
+      }
   };
 
   return (
-    <div className="min-h-screen flex">
+    <div className="flex min-h-screen">
       {/* Lado Esquerdo - 3D Printing Theme */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#4C00FF] to-[#7C3AED] items-center justify-center p-12 relative overflow-hidden">
         {/* Grid Pattern */}
         <div className="absolute inset-0 opacity-10">
-          <div className="h-full w-full" style={{
+          <div className="w-full h-full" style={{
             backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
             backgroundSize: '50px 50px'
           }}></div>
@@ -50,7 +79,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToForgotPasswor
             {[...Array(8)].map((_, i) => (
               <div
                 key={i}
-                className="absolute left-1/2 transform -translate-x-1/2 bg-white/20 rounded-sm"
+                className="absolute transform -translate-x-1/2 rounded-sm left-1/2 bg-white/20"
                 style={{
                   bottom: `${i * 30}px`,
                   width: `${280 - i * 20}px`,
@@ -61,14 +90,14 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToForgotPasswor
             ))}
             
             {/* Wireframe Cubes */}
-            <div className="absolute top-0 right-0 w-20 h-20 border-2 border-white/30 transform rotate-45" style={{ animation: 'float 3s ease-in-out infinite' }}></div>
-            <div className="absolute bottom-0 left-0 w-16 h-16 border-2 border-white/30 transform -rotate-12" style={{ animation: 'float 4s ease-in-out infinite 0.5s' }}></div>
+            <div className="absolute top-0 right-0 w-20 h-20 transform rotate-45 border-2 border-white/30" style={{ animation: 'float 3s ease-in-out infinite' }}></div>
+            <div className="absolute bottom-0 left-0 w-16 h-16 transform border-2 border-white/30 -rotate-12" style={{ animation: 'float 4s ease-in-out infinite 0.5s' }}></div>
           </div>
 
           {/* Text */}
-          <div className="text-center mt-12">
-            <h2 className="text-white mb-2" style={{ fontSize: '3rem', lineHeight: '1' }}>PrintHub</h2>
-            <p className="text-white/80 text-lg">Gerenciamento inteligente de impressão 3D</p>
+          <div className="mt-12 text-center">
+            <h2 className="mb-2 text-white" style={{ fontSize: '3rem', lineHeight: '1' }}>PrintHub</h2>
+            <p className="text-lg text-white/80">Gerenciamento inteligente de impressão 3D</p>
           </div>
         </div>
 
@@ -97,14 +126,14 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToForgotPasswor
       </div>
 
       {/* Lado Direito - Formulário */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
+      <div className="flex items-center justify-center w-full p-8 lg:w-1/2">
         <div className="w-full max-w-md">
           <div className="mb-8">
             <div className="flex items-center justify-center gap-3 mb-6">
               <Box className="w-10 h-10 text-[#4C00FF]" />
               <h1 className="text-[#4C00FF] m-0 text-2xl text-semibold">PrintHub</h1>
             </div>
-            <div className="text-center mb-2">
+            <div className="mb-2 text-center">
             </div>
             <h2 className="text-center">Acesse sua Conta</h2>
           </div>
@@ -119,7 +148,14 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToForgotPasswor
                   type="email"
                   placeholder="seu@email.com"
                   className="pl-10"
-                  {...register('email')}
+                  {...register('email', {
+                    required: 'E-mail é obrigatório',
+                    pattern: {
+                      value: /^\S+@\S+$/i,
+                      message: 'E-mail inválido'
+                    }
+
+                  })}
                 />
               </div>
             </div>
@@ -159,12 +195,20 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToForgotPasswor
               </button>
             </div>
 
+            {apiError && (
+              <div className="px-4 py-3 text-sm font-medium text-center text-red-500 rounded-lg bg-red-500/10">
+                {apiError}
+              </div>
+            )}
+
+
             <Button
               type="submit"
-              className="w-full"
+              className="w-full cursor-pointer "
               style={{ backgroundColor: '#4C00FF' }}
+              disabled={loading}
             >
-              Entrar
+              {loading ? 'Carregando...' : 'Entrar'}
             </Button>
 
             <p className="text-center text-[#6B7280]">
@@ -178,17 +222,6 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToForgotPasswor
               </button>
             </p>
           </form>
-
-          {/* Credenciais de Teste */}
-          <div className="mt-8 p-4 bg-[#F4F7FC] border-2 border-[#4C00FF]/20 rounded-lg">
-            <p className="text-center text-sm mb-2" style={{ fontWeight: '600', color: '#4C00FF' }}>
-              Credenciais de Teste
-            </p>
-            <div className="space-y-1 text-sm text-[#6B7280]">
-              <p><strong>Email:</strong> usuario@teste.com</p>
-              <p><strong>Senha:</strong> 123456</p>
-            </div>
-          </div>
         </div>
       </div>
     </div>
