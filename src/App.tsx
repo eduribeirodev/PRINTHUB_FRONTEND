@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { KanbanBoard } from './components/KanbanBoard';
@@ -70,6 +70,14 @@ export interface Filament {
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem('PrintHub_token');
+    if (token) {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
   const [authScreen, setAuthScreen] = useState<'login' | 'register' | 'terms' | 'forgot-password' | 'verify-code' | 'reset-password'>('login');
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [selectedJobId, setSelectedJobId] = useState<string | undefined>();
@@ -262,9 +270,10 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('PrintHub_token');
+    localStorage.removeItem('PrintHub_user');
     setIsAuthenticated(false);
-    setAuthScreen('login');
-    setCurrentScreen('dashboard');
+    setAuthScreen('login');  
   };
 
   const handleAddJob = (newJob: Omit<Job, 'id' | 'status'>) => {
