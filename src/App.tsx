@@ -26,7 +26,7 @@ export interface Job {
   quantity?: number;
   materialWeight?: string;
   layers?: string;
-  filamentIds: string[]; // IDs dos filamentos usados
+  filamentIds: string[]; 
 }
 
 interface HistoryJob {
