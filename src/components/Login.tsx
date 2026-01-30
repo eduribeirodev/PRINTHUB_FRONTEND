@@ -5,7 +5,6 @@ import { Mail, Lock, Eye, EyeOff, Box } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import api from '../services/api'
-import { Console } from 'console';
 
 interface LoginProps {
   onLogin: () => void;
@@ -36,7 +35,6 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToForgotPasswor
 
     try{
       const response = await api.post('login', data);
-
       const { token, user } = response.data;
       localStorage.setItem('PrintHub_token', token);
       localStorage.setItem('PrintHub_user', JSON.stringify(user));
@@ -48,7 +46,7 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToForgotPasswor
         if (error.response.status === 401 || error.response.status === 422) {
           setApiError('Credenciais inválidas');
         } else {
-          setApiError('Erro ao realizar login. Tente novamente.');
+          setApiError('Erro ao realizar login.Tente novamente.');
         }
       } else {
         
