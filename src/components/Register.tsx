@@ -5,6 +5,8 @@ import { Checkbox } from './ui/checkbox';
 import { User, Mail, Lock, Eye, EyeOff, Box } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import api from '../services/api';
+ 
 
 interface RegisterProps {
   onRegister: () => void;
@@ -16,13 +18,14 @@ interface RegisterFormData {
   name: string;
   email: string;
   password: string;
-  confirmPassword: string;
-  terms: boolean;
+  password_confirmation: string;
 }
 
-export function Register({ onRegister, onNavigateToLogin, onNavigateToTerms }: RegisterProps) {
+export function Register({ onRegister, onNavigateToLogin}: RegisterProps) {
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showpassword_confirmation, setShowpassword_confirmation] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const {
     register,
@@ -33,9 +36,32 @@ export function Register({ onRegister, onNavigateToLogin, onNavigateToTerms }: R
 
   const password = watch('password');
 
-  const onSubmit = (data: RegisterFormData) => {
-    console.log('Register data:', data);
-    onRegister();
+  const onSubmit = async (data: RegisterFormData) => {
+    console.log(data);
+    setApiError(null);
+    setLoading(true);
+
+    try{
+      const response = await api.post('register', data);
+
+      const { token, user } = response.data;
+      localStorage.setItem('PrintHub_token', token);
+      localStorage.setItem('PrintHub_user', JSON.stringify(user));
+
+      onRegister();
+    }catch (error: any) {
+      if (error.response){
+        if (error.response.status === 401 || error.response.status === 422) {
+          setApiError('Dados inválidos');
+        }else {
+          setApiError('erro ao realizar registro. Tente novament');
+        }
+      } else {
+        setApiError('Erro de conexão com o servidor');
+      }
+    }finally{
+      setLoading(false)
+    }
   };
 
   return (
@@ -172,22 +198,22 @@ export function Register({ onRegister, onNavigateToLogin, onNavigateToTerms }: R
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirmar Senha</Label>
+              <Label htmlFor="password_confirmation">Confirmar Senha</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
                 <Input
-                  id="confirmPassword"
-                  type={showConfirmPassword ? 'text' : 'password'}
+                  id="password_confirmation"
+                  type={showpassword_confirmation ? 'text' : 'password'}
                   placeholder="••••••••"
                   className="pl-10 pr-10"
-                  {...register('confirmPassword')}
+                  {...register('password_confirmation')}
                 />
                 <button
                   type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  onClick={() => setShowpassword_confirmation(!showpassword_confirmation)}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#6B7280] hover:text-[#1E1E1E]"
                 >
-                  {showConfirmPassword ? (
+                  {showpassword_confirmation ? (
                     <EyeOff className="w-5 h-5" />
                   ) : (
                     <Eye className="w-5 h-5" />
@@ -196,7 +222,7 @@ export function Register({ onRegister, onNavigateToLogin, onNavigateToTerms }: R
               </div>
             </div>
 
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               <div className="flex items-start gap-3">
                 <Checkbox 
                   id="terms" 
@@ -214,14 +240,21 @@ export function Register({ onRegister, onNavigateToLogin, onNavigateToTerms }: R
                   </button>
                 </label>
               </div>
-            </div>
+            </div> */}
+
+            {apiError && (
+              <div className="px-4 py-3 text-sm font-medium text-center text-red-500 rounded-lg bg-red-500/10">
+                {apiError}
+              </div>
+            )}
 
             <Button
               type="submit"
-              className="w-full"
+              className="w-full cursor-pointer"
               style={{ backgroundColor: '#4C00FF' }}
+              disabled={loading}
             >
-              Cadastrar
+              {loading ? 'Carregando...' : 'Cadastrar'}
             </Button>
 
             <p className="text-center text-[#6B7280]">
