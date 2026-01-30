@@ -12,12 +12,12 @@ interface ResetPasswordProps {
 
 interface ResetPasswordFormData {
   password: string;
-  confirmPassword: string;
+  password_confirmation: string;
 }
 
 export function ResetPassword({ onNavigateToLogin }: ResetPasswordProps) {
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showpassword_confirmation, setShowpassword_confirmation] = useState(false);
 
   const {
     register,
@@ -191,15 +191,15 @@ export function ResetPassword({ onNavigateToLogin }: ResetPasswordProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirmar senha</Label>
+                <Label htmlFor="password_confirmation">Confirmar senha</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <Input
-                    id="confirmPassword"
-                    type={showConfirmPassword ? 'text' : 'password'}
+                    id="password_confirmation"
+                    type={showpassword_confirmation ? 'text' : 'password'}
                     placeholder="Confirme sua nova senha"
                     className="pl-10 pr-10"
-                    {...register('confirmPassword', {
+                    {...register('password_confirmation', {
                       required: 'Confirme sua senha',
                       validate: (value) =>
                         value === password || 'As senhas não coincidem',
@@ -207,14 +207,14 @@ export function ResetPassword({ onNavigateToLogin }: ResetPasswordProps) {
                   />
                   <button
                     type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    onClick={() => setShowpassword_confirmation(!showpassword_confirmation)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
-                    {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    {showpassword_confirmation ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
-                {errors.confirmPassword && (
-                  <p className="text-red-500 text-sm">{errors.confirmPassword.message}</p>
+                {errors.password_confirmation && (
+                  <p className="text-red-500 text-sm">{errors.password_confirmation.message}</p>
                 )}
               </div>
 
