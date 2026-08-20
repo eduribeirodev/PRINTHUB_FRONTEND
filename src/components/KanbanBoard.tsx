@@ -1,186 +1,128 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from './ui/card';
-import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Eye, Pencil, Clock, DollarSign, Droplet, Plus, Archive } from 'lucide-react';
-import { Job, Filament, getFilamentNames } from '../App';
+import { Badge } from './ui/badge';
+import { Plus, Clock, CheckCircle2, AlertCircle, PlayCircle } from 'lucide-react';
+import  api  from '../services/api';
 
-interface KanbanBoardProps {
-  onNavigate: (screen: string, jobId?: string) => void;
-  onArchiveJob?: (job: Job) => void;
-  jobs: Job[];
-  setJobs: (jobs: Job[]) => void;
-  filaments: Filament[];
+interface PrintJob {
+  id: string;
+  title: string;
+  status: 'pending' | 'printing' | 'completed' | 'failed';
+  filament_id?: string;
+  estimated_hours?: number;
 }
 
-export function KanbanBoard({ onNavigate, onArchiveJob, jobs, setJobs, filaments }: KanbanBoardProps) {
-  const [draggedJob, setDraggedJob] = useState<Job | null>(null);
+export function KanbanBoard() {
+  const [jobs, setJobs] = useState<PrintJob[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleDragStart = (job: Job) => {
-    setDraggedJob(job);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (status: Job['status']) => {
-    if (draggedJob) {
-      setJobs(jobs.map(job => 
-        job.id === draggedJob.id ? { ...job, status } : job
-      ));
-      setDraggedJob(null);
+  // 1. Buscar os jobs (tarefas de impressão) do Laravel ao carregar a tela
+  useEffect(() => {
+    async function fetchJobs() {
+      try {
+        const response = await api.get('/jobs');
+        setJobs(response.data);
+      } catch (error) {
+        console.error("Erro ao carregar as tarefas de impressão:", error);
+      } finally {
+        setLoading(false);
+      }
     }
-  };
 
-  const getJobsByStatus = (status: Job['status']) => {
-    return jobs.filter(job => job.status === status);
-  };
+    fetchJobs();
+  }, []);
 
-  const columns = [
-    { 
-      id: 'backlog', 
-      title: 'Backlog', 
-      color: '#6B7280',
-      jobs: getJobsByStatus('backlog')
-    },
-    { 
-      id: 'todo', 
-      title: 'A Fazer', 
-      color: '#3B82F6',
-      jobs: getJobsByStatus('todo')
-    },
-    { 
-      id: 'inProgress', 
-      title: 'Em Andamento', 
-      color: '#F59E0B',
-      jobs: getJobsByStatus('inProgress')
-    },
-    { 
-      id: 'approval', 
-      title: 'Aprovação', 
-      color: '#8B5CF6',
-      jobs: getJobsByStatus('approval')
-    },
-    { 
-      id: 'completed', 
-      title: 'Finalizado', 
-      color: '#10B981',
-      jobs: getJobsByStatus('completed')
-    },
-  ];
+  // Filtrar por colunas do Kanban baseadas no status retornado pelo back-end
+  const pendingJobs = jobs.filter(j => j.status === 'pending');
+  const printingJobs = jobs.filter(j => j.status === 'printing');
+  const completedJobs = jobs.filter(j => j.status === 'completed');
+  const failedJobs = jobs.filter(j => j.status === 'failed');
+
+  if (loading) {
+    return <div className="p-8 text-center">Carregando painel Kanban...</div>;
+  }
 
   return (
-    <div className="p-4 md:p-8">
-      <div className="mb-6 md:mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="p-8">
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <h1>Fila de Jobs</h1>
-          <p className="text-[#6B7280] mt-2">Arraste os cards entre as colunas para atualizar o status</p>
+          <h1 className="text-2xl font-bold">Painel de Impressão (Kanban)</h1>
+          <p className="text-sm text-gray-500">Acompanhe o andamento das suas impressões 3D</p>
         </div>
-        
-        <Button onClick={() => onNavigate('job-details')} style={{ backgroundColor: '#4C00FF' }}>
-          Adicionar Impressão
-        </Button>
       </div>
 
-      <div className="overflow-x-auto pb-4 custom-scrollbar">
-        <div className="flex gap-4 min-w-min">
-          {columns.map((column) => (
-            <div 
-              key={column.id}
-              className="flex flex-col w-[280px] md:w-[300px] flex-shrink-0"
-              onDragOver={handleDragOver}
-              onDrop={() => handleDrop(column.id as Job['status'])}
-            >
-              <div 
-                className="p-4 rounded-t-lg mb-4"
-                style={{ backgroundColor: column.color }}
-              >
-                <h3 className="text-white">{column.title}</h3>
-                <p className="text-white opacity-90 mt-1">{column.jobs.length} jobs</p>
-              </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Coluna: Pendente */}
+        <div className="bg-gray-50 dark:bg-zinc-900 p-4 rounded-lg border">
+          <div className="flex items-center justify-between mb-4">
+            <span className="flex items-center font-semibold text-amber-600 gap-1">
+              <Clock className="w-4 h-4" /> Pendente
+            </span>
+            <Badge variant="secondary">{pendingJobs.length}</Badge>
+          </div>
+          <div className="space-y-3">
+            {pendingJobs.map(job => (
+              <Card key={job.id} className="p-4 shadow-sm">
+                <h4 className="font-medium">{job.title}</h4>
+                <p className="text-xs text-gray-400 mt-1">Tempo est.: {job.estimated_hours || 0}h</p>
+              </Card>
+            ))}
+          </div>
+        </div>
 
-              <div className="space-y-4 flex-1">
-                {column.jobs.map((job) => (
-                  <Card 
-                    key={job.id}
-                    className="p-4 cursor-move hover:shadow-lg transition-shadow"
-                    draggable
-                    onDragStart={() => handleDragStart(job)}
-                  >
-                    <div className="mb-3">
-                      <h4 className="mb-2">{job.fileName}</h4>
-                      <div className="flex items-center gap-2 text-[#6B7280]">
-                        <Droplet className="w-4 h-4" />
-                        <span className="truncate">{getFilamentNames(job.filamentIds, filaments)}</span>
-                      </div>
-                    </div>
+        {/* Coluna: Imprimindo */}
+        <div className="bg-gray-50 dark:bg-zinc-900 p-4 rounded-lg border">
+          <div className="flex items-center justify-between mb-4">
+            <span className="flex items-center font-semibold text-blue-600 gap-1">
+              <PlayCircle className="w-4 h-4" /> Imprimindo
+            </span>
+            <Badge variant="secondary">{printingJobs.length}</Badge>
+          </div>
+          <div className="space-y-3">
+            {printingJobs.map(job => (
+              <Card key={job.id} className="p-4 shadow-sm border-blue-200">
+                <h4 className="font-medium">{job.title}</h4>
+                <p className="text-xs text-gray-400 mt-1">Tempo est.: {job.estimated_hours || 0}h</p>
+              </Card>
+            ))}
+          </div>
+        </div>
 
-                    <div className="space-y-2 mb-4">
-                      <div className="flex items-center gap-2 text-[#6B7280]">
-                        <Clock className="w-4 h-4" />
-                        <span>{job.estimatedTime}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-[#6B7280]">
-                        <DollarSign className="w-4 h-4" />
-                        <span>{job.estimatedCost}</span>
-                      </div>
-                    </div>
+        {/* Coluna: Concluído */}
+        <div className="bg-gray-50 dark:bg-zinc-900 p-4 rounded-lg border">
+          <div className="flex items-center justify-between mb-4">
+            <span className="flex items-center font-semibold text-green-600 gap-1">
+              <CheckCircle2 className="w-4 h-4" /> Concluído
+            </span>
+            <Badge variant="secondary">{completedJobs.length}</Badge>
+          </div>
+          <div className="space-y-3">
+            {completedJobs.map(job => (
+              <Card key={job.id} className="p-4 shadow-sm opacity-75">
+                <h4 className="font-medium">{job.title}</h4>
+                <p className="text-xs text-gray-400 mt-1">Concluído</p>
+              </Card>
+            ))}
+          </div>
+        </div>
 
-                    <div className="flex gap-2">
-                      {job.status === 'completed' ? (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1"
-                            onClick={() => onNavigate('job-details', job.id)}
-                          >
-                            <Eye className="w-4 h-4 mr-2" />
-                            Detalhes
-                          </Button>
-                          <Button
-                            size="sm"
-                            style={{ backgroundColor: '#10B981' }}
-                            className="text-white"
-                            onClick={() => onArchiveJob && onArchiveJob(job)}
-                          >
-                            <Archive className="w-4 h-4 mr-2" />
-                            Arquivar
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1"
-                            onClick={() => onNavigate('job-details', job.id)}
-                          >
-                            <Eye className="w-4 h-4 mr-2" />
-                            Detalhes
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onNavigate('job-details', job.id)}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </Card>
-                ))}
-
-                {column.jobs.length === 0 && (
-                  <div className="p-8 text-center text-[#6B7280] border-2 border-dashed border-gray-200 rounded-lg">
-                    Arraste jobs aqui
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+        {/* Coluna: Falhou */}
+        <div className="bg-gray-50 dark:bg-zinc-900 p-4 rounded-lg border">
+          <div className="flex items-center justify-between mb-4">
+            <span className="flex items-center font-semibold text-red-600 gap-1">
+              <AlertCircle className="w-4 h-4" /> Falhou
+            </span>
+            <Badge variant="secondary">{failedJobs.length}</Badge>
+          </div>
+          <div className="space-y-3">
+            {failedJobs.map(job => (
+              <Card key={job.id} className="p-4 shadow-sm border-red-200">
+                <h4 className="font-medium">{job.title}</h4>
+                <p className="text-xs text-red-400 mt-1">Erro na impressão</p>
+              </Card>
+            ))}
+          </div>
         </div>
       </div>
     </div>

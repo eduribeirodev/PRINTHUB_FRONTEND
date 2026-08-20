@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Pencil, Trash2, Plus, AlertCircle } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { HexColorPicker } from 'react-colorful';
+import api from '../services/api'; 
 
 interface Filament {
   id: string;
@@ -146,13 +147,9 @@ function FilamentFormDialogContent({
   );
 }
 
-interface FilamentInventoryProps {
-  filaments: Filament[];
-  setFilaments: (filaments: Filament[]) => void;
-}
-
-export function FilamentInventory({ filaments, setFilaments }: FilamentInventoryProps) {
-
+export function FilamentInventory() {
+  const [filaments, setFilaments] = useState<Filament[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingFilamentId, setEditingFilamentId] = useState<string | null>(null);
@@ -166,6 +163,22 @@ export function FilamentInventory({ filaments, setFilaments }: FilamentInventory
     initialQuantity: '1000',
   });
 
+  // 1. BUSCAR DADOS DO BACK-END QUANDO A TELA CARREGA
+  useEffect(() => {
+    async function fetchFilaments() {
+      try {
+        const response = await api.get('/filaments'); // Rota do Laravel[cite: 2]
+        setFilaments(response.data);
+      } catch (error) {
+        console.error("Erro ao buscar filamentos:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchFilaments();
+  }, []);
+
   const resetForm = () => {
     setFormData({
       color: '',
@@ -177,21 +190,25 @@ export function FilamentInventory({ filaments, setFilaments }: FilamentInventory
     });
   };
 
-  const handleAddFilament = () => {
-    const filament: Filament = {
-      id: Date.now().toString(),
-      color: formData.color,
-      colorHex: formData.colorHex,
-      brand: formData.brand,
-      type: formData.type,
-      pricePerKg: parseFloat(formData.pricePerKg),
-      initialQuantity: parseInt(formData.initialQuantity),
-      remainingQuantity: parseInt(formData.initialQuantity),
-    };
-    
-    setFilaments([...filaments, filament]);
-    setIsAddDialogOpen(false);
-    resetForm();
+  // 2. CADASTRAR NOVO FILAMENTO NO BANCO
+  const handleAddFilament = async () => {
+    try {
+      const response = await api.post('/filaments', {
+        color: formData.color,
+        colorHex: formData.colorHex,
+        brand: formData.brand,
+        type: formData.type,
+        pricePerKg: parseFloat(formData.pricePerKg),
+        initialQuantity: parseInt(formData.initialQuantity),
+      });
+
+      // Adiciona o que voltou do banco na lista visual
+      setFilaments([...filaments, response.data]);
+      setIsAddDialogOpen(false);
+      resetForm();
+    } catch (error) {
+      console.error("Erro ao cadastrar filamento:", error);
+    }
   };
 
   const handleEditClick = (filament: Filament) => {
@@ -207,35 +224,47 @@ export function FilamentInventory({ filaments, setFilaments }: FilamentInventory
     setIsEditDialogOpen(true);
   };
 
-  const handleEditFilament = () => {
+  // 3. EDITAR FILAMENTO NO BANCO
+  const handleEditFilament = async () => {
     if (!editingFilamentId) return;
     
-    setFilaments(filaments.map(f => 
-      f.id === editingFilamentId 
-        ? {
-            ...f,
-            color: formData.color,
-            colorHex: formData.colorHex,
-            brand: formData.brand,
-            type: formData.type,
-            pricePerKg: parseFloat(formData.pricePerKg),
-            initialQuantity: parseInt(formData.initialQuantity),
-          }
-        : f
-    ));
-    
-    setIsEditDialogOpen(false);
-    setEditingFilamentId(null);
-    resetForm();
+    try {
+      const response = await api.put(`/filaments/${editingFilamentId}`, {
+        color: formData.color,
+        colorHex: formData.colorHex,
+        brand: formData.brand,
+        type: formData.type,
+        pricePerKg: parseFloat(formData.pricePerKg),
+        initialQuantity: parseInt(formData.initialQuantity),
+      });
+
+      setFilaments(filaments.map(f => f.id === editingFilamentId ? response.data : f));
+      setIsEditDialogOpen(false);
+      setEditingFilamentId(null);
+      resetForm();
+    } catch (error) {
+      console.error("Erro ao atualizar filamento:", error);
+    }
   };
 
-  const handleDeleteFilament = (id: string) => {
-    setFilaments(filaments.filter(f => f.id !== id));
+  // 4. DELETAR FILAMENTO DO BANCO
+  const handleDeleteFilament = async (id: string) => {
+    try {
+      await api.delete(`/filaments/${id}`);
+      setFilaments(filaments.filter(f => f.id !== id));
+    } catch (error) {
+      console.error("Erro ao deletar filamento:", error);
+    }
   };
 
   const getPercentageRemaining = (filament: Filament) => {
+    if (!filament.initialQuantity || filament.initialQuantity === 0) return 100;
     return (filament.remainingQuantity / filament.initialQuantity) * 100;
   };
+
+  if (loading) {
+    return <div className="p-8 text-center">Carregando inventário do servidor...</div>;
+  }
 
   return (
     <div className="p-8">
@@ -292,59 +321,67 @@ export function FilamentInventory({ filaments, setFilaments }: FilamentInventory
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filaments.map((filament) => {
-              const percentage = getPercentageRemaining(filament);
-              const isLow = percentage < 20;
-              
-              return (
-                <TableRow key={filament.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="w-6 h-6 rounded-full border border-gray-300" 
-                        style={{ backgroundColor: filament.colorHex }}
-                      />
-                      <span>{filament.color}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>{filament.brand}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{filament.type}</Badge>
-                  </TableCell>
-                  <TableCell>R$ {filament.pricePerKg.toFixed(2)} / kg</TableCell>
-                  <TableCell>{filament.initialQuantity}g</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span>{filament.remainingQuantity}g</span>
-                      {isLow && (
-                        <Badge variant="outline" className="border-[#F59E0B] text-[#F59E0B]">
-                          <AlertCircle className="w-3 h-3 mr-1" />
-                          Baixo
-                        </Badge>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => handleEditClick(filament)}
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => handleDeleteFilament(filament.id)}
-                      >
-                        <Trash2 className="w-4 h-4 text-red-500" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+            {filaments.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-6 text-gray-500">
+                  Nenhum filamento cadastrado no banco de dados.
+                </TableCell>
+              </TableRow>
+            ) : (
+              filaments.map((filament) => {
+                const percentage = getPercentageRemaining(filament);
+                const isLow = percentage < 20;
+                
+                return (
+                  <TableRow key={filament.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-6 h-6 rounded-full border border-gray-300" 
+                          style={{ backgroundColor: filament.colorHex }}
+                        />
+                        <span>{filament.color}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>{filament.brand}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{filament.type}</Badge>
+                    </TableCell>
+                    <TableCell>R$ {Number(filament.pricePerKg).toFixed(2)} / kg</TableCell>
+                    <TableCell>{filament.initialQuantity}g</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span>{filament.remainingQuantity}g</span>
+                        {isLow && (
+                          <Badge variant="outline" className="border-[#F59E0B] text-[#F59E0B]">
+                            <AlertCircle className="w-3 h-3 mr-1" />
+                            Baixo
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => handleEditClick(filament)}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => handleDeleteFilament(filament.id)}
+                        >
+                          <Trash2 className="w-4 h-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
           </TableBody>
         </Table>
       </Card>
