@@ -9,6 +9,8 @@ import { Upload, Clock, DollarSign, Droplet, Box, AlertCircle, Edit3, Palette, P
 import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from './ui/alert';
+import api from '../services/api';
+import { ApiJob, Job as AppJob, mapJob } from '../App';
 
 interface Job {
   fileName: string;
@@ -46,10 +48,10 @@ interface HistoryJob {
 
 interface JobDetailsProps {
   onNavigate: (screen: string) => void;
-  onAddJob: (job: Job) => void;
+  onAddJob: (job: AppJob) => void;
   availableFilaments: FilamentOption[];
   jobId?: string;
-  jobs?: Array<Job & { id: string; status: string }>;
+  jobs?: AppJob[];
   historyJobs?: HistoryJob[];
 }
 
@@ -69,6 +71,7 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
   const [manualHours, setManualHours] = useState('');
   const [manualMinutes, setManualMinutes] = useState('');
   const [manualWeight, setManualWeight] = useState('');
+  const [layers, setLayers] = useState('');
   const [baseFilamentWeight, setBaseFilamentWeight] = useState('');
   
   // Estados para múltiplas cores
@@ -180,9 +183,44 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
 
   const isFormValid = () => {
     if (!stlFile) return false;
-    if (!manualHours || !manualMinutes || !manualWeight) return false;
+    if (!manualHours || !manualMinutes || !manualWeight || !layers) return false;
     if (!selectedFilaments[0]) return false;
     return true;
+  };
+
+  const handleCreateJob = async () => {
+    if (!isFormValid() || !stlFile) return;
+
+    if (hasMultipleColors || selectedFilaments.length > 1) {
+      toast.error('Múltiplas cores ainda não são suportadas pela API.', {
+        description: 'O backend atual aceita somente um filamento por job.',
+      });
+      return;
+    }
+
+    const totalMinutes = (Number(manualHours) * 60 + Number(manualMinutes)) * quantity;
+    const totalWeight = Number(manualWeight) * quantity;
+    const formData = new FormData();
+    formData.append('fileName', jobName || stlFile.name);
+    formData.append('status', 'BACKLOG');
+    formData.append('filament_id', selectedFilaments[0]);
+    formData.append('estimatedTimeMinutes', String(totalMinutes));
+    formData.append('estimatedCost', calculateCost());
+    formData.append('quantity', String(quantity));
+    formData.append('materialWeightGrams', String(totalWeight));
+    formData.append('layers', layers);
+    formData.append('stl_file', stlFile);
+
+    try {
+      const response = await api.post<ApiJob>('/jobs', formData);
+      onAddJob(mapJob(response.data));
+      toast.success('Job salvo no servidor.');
+      onNavigate('kanban');
+    } catch (error: any) {
+      toast.error('Não foi possível salvar o job.', {
+        description: error.response?.data?.message || 'Confira os dados e o estoque de filamento.',
+      });
+    }
   };
 
   // Se estiver em modo de visualização, mostrar interface diferente
@@ -451,6 +489,18 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
                   placeholder="Ex: 125.5"
                   value={manualWeight}
                   onChange={(e) => setManualWeight(e.target.value)}
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <Label htmlFor="layers">Número de camadas</Label>
+                <Input
+                  id="layers"
+                  type="number"
+                  min="1"
+                  placeholder="Ex: 250"
+                  value={layers}
+                  onChange={(e) => setLayers(e.target.value)}
                   className="mt-2"
                 />
               </div>
@@ -724,27 +774,7 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
             <Button 
               className="flex-1" 
               style={{ backgroundColor: '#4C00FF' }}
-              onClick={() => {
-                if (isFormValid()) {
-                  const estimatedCost = calculateCost();
-                  const estimatedTime = calculateTotalTime();
-                  
-                  // Coletar IDs dos filamentos selecionados (filtrar vazios)
-                  const filamentIds = selectedFilaments.filter(id => id && id.trim() !== '');
-                  
-                  const newJob: Job = {
-                    fileName: jobName || stlFile?.name || 'Sem nome',
-                    estimatedTime: estimatedTime,
-                    estimatedCost: `R$ ${estimatedCost}`,
-                    quantity,
-                    materialWeight: `${manualWeight}g`,
-                    filamentIds: filamentIds,
-                  };
-                  
-                  onAddJob(newJob);
-                  onNavigate('kanban');
-                }
-              }}
+              onClick={handleCreateJob}
               disabled={!isFormValid()}
             >
               Adicionar ao Backlog

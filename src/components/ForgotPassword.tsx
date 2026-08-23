@@ -4,6 +4,8 @@ import { Label } from './ui/label';
 import { Mail, ArrowLeft, Box } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { useState } from 'react';
+import api from '../services/api';
 
 interface ForgotPasswordProps {
   onNavigateToLogin: () => void;
@@ -15,13 +17,17 @@ interface ForgotPasswordFormData {
 }
 
 export function ForgotPassword({ onNavigateToLogin, onNavigateToVerifyCode }: ForgotPasswordProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<ForgotPasswordFormData>();
 
-  const onSubmit = (data: ForgotPasswordFormData) => {
+  const onSubmit = async (data: ForgotPasswordFormData) => {
+    setIsSubmitting(true);
+    try {
+      await api.post('/password/forgot', data);
     console.log('Forgot password data:', data);
     
     // Simular envio de código
@@ -30,7 +36,12 @@ export function ForgotPassword({ onNavigateToLogin, onNavigateToVerifyCode }: Fo
       duration: 4000,
     });
     
-    onNavigateToVerifyCode(data.email);
+      onNavigateToVerifyCode(data.email);
+    } catch (error: any) {
+      toast.error('Não foi possível enviar o código.', { description: error.response?.data?.message || 'Tente novamente.' });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -138,6 +149,7 @@ export function ForgotPassword({ onNavigateToLogin, onNavigateToVerifyCode }: Fo
                 type="submit"
                 className="w-full"
                 style={{ backgroundColor: '#4C00FF' }}
+                disabled={isSubmitting}
               >
                 Enviar código de verificação
               </Button>

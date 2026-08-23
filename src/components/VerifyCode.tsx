@@ -3,18 +3,19 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from './ui/input-otp';
 import { ArrowLeft, Box, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import api from '../services/api';
 
 interface VerifyCodeProps {
   email: string;
   onNavigateToLogin: () => void;
-  onNavigateToResetPassword: () => void;
+  onNavigateToResetPassword: (token: string) => void;
 }
 
 export function VerifyCode({ email, onNavigateToLogin, onNavigateToResetPassword }: VerifyCodeProps) {
   const [code, setCode] = useState('');
   const [isResending, setIsResending] = useState(false);
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     if (code.length !== 6) {
       toast.error('Código inválido', {
         description: 'Por favor, digite o código de 6 dígitos.',
@@ -23,26 +24,32 @@ export function VerifyCode({ email, onNavigateToLogin, onNavigateToResetPassword
     }
 
     // Simular verificação
-    console.log('Verifying code:', code);
+    let response: { data: { resetToken?: string; token?: string } };
+    try {
+      response = await api.post('/password/verify', { email, code });
+    } catch (error: any) {
+      toast.error('Código inválido ou expirado.', { description: error.response?.data?.message });
+      return;
+    }
     toast.success('Código verificado!', {
       description: 'Redirecionando para redefinição de senha...',
     });
     
     setTimeout(() => {
-      onNavigateToResetPassword();
+      onNavigateToResetPassword(response.data.resetToken ?? response.data.token ?? '');
     }, 1000);
   };
 
   const handleResendCode = async () => {
     setIsResending(true);
-    
-    // Simular reenvio
-    setTimeout(() => {
-      toast.success('Código reenviado!', {
-        description: `Um novo código foi enviado para ${email}`,
-      });
+    try {
+      await api.post('/password/forgot', { email });
+      toast.success('Código reenviado!', { description: `Um novo código foi enviado para ${email}` });
+    } catch (error: any) {
+      toast.error('Não foi possível reenviar o código.', { description: error.response?.data?.message });
+    } finally {
       setIsResending(false);
-    }, 1500);
+    }
   };
 
   return (

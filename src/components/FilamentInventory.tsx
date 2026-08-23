@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
@@ -10,17 +10,7 @@ import { Pencil, Trash2, Plus, AlertCircle } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { HexColorPicker } from 'react-colorful';
 import api from '../services/api'; 
-
-interface Filament {
-  id: string;
-  color: string;
-  colorHex: string;
-  brand: string;
-  type: string;
-  pricePerKg: number;
-  initialQuantity: number;
-  remainingQuantity: number;
-}
+import { Filament, mapFilament } from '../App';
 
 interface FilamentFormData {
   color: string;
@@ -147,9 +137,12 @@ function FilamentFormDialogContent({
   );
 }
 
-export function FilamentInventory() {
-  const [filaments, setFilaments] = useState<Filament[]>([]);
-  const [loading, setLoading] = useState(true);
+interface FilamentInventoryProps {
+  filaments: Filament[];
+  setFilaments: React.Dispatch<React.SetStateAction<Filament[]>>;
+}
+
+export function FilamentInventory({ filaments, setFilaments }: FilamentInventoryProps) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingFilamentId, setEditingFilamentId] = useState<string | null>(null);
@@ -162,22 +155,6 @@ export function FilamentInventory() {
     pricePerKg: '',
     initialQuantity: '1000',
   });
-
-  // 1. BUSCAR DADOS DO BACK-END QUANDO A TELA CARREGA
-  useEffect(() => {
-    async function fetchFilaments() {
-      try {
-        const response = await api.get('/filaments'); // Rota do Laravel[cite: 2]
-        setFilaments(response.data);
-      } catch (error) {
-        console.error("Erro ao buscar filamentos:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchFilaments();
-  }, []);
 
   const resetForm = () => {
     setFormData({
@@ -194,16 +171,17 @@ export function FilamentInventory() {
   const handleAddFilament = async () => {
     try {
       const response = await api.post('/filaments', {
-        color: formData.color,
+        colorName: formData.color,
         colorHex: formData.colorHex,
         brand: formData.brand,
         type: formData.type,
         pricePerKg: parseFloat(formData.pricePerKg),
         initialQuantity: parseInt(formData.initialQuantity),
+        currentQuantity: parseInt(formData.initialQuantity),
       });
 
       // Adiciona o que voltou do banco na lista visual
-      setFilaments([...filaments, response.data]);
+      setFilaments([...filaments, mapFilament(response.data)]);
       setIsAddDialogOpen(false);
       resetForm();
     } catch (error) {
@@ -230,7 +208,7 @@ export function FilamentInventory() {
     
     try {
       const response = await api.put(`/filaments/${editingFilamentId}`, {
-        color: formData.color,
+        colorName: formData.color,
         colorHex: formData.colorHex,
         brand: formData.brand,
         type: formData.type,
@@ -238,7 +216,7 @@ export function FilamentInventory() {
         initialQuantity: parseInt(formData.initialQuantity),
       });
 
-      setFilaments(filaments.map(f => f.id === editingFilamentId ? response.data : f));
+      setFilaments(filaments.map(f => f.id === editingFilamentId ? mapFilament(response.data) : f));
       setIsEditDialogOpen(false);
       setEditingFilamentId(null);
       resetForm();
@@ -261,10 +239,6 @@ export function FilamentInventory() {
     if (!filament.initialQuantity || filament.initialQuantity === 0) return 100;
     return (filament.remainingQuantity / filament.initialQuantity) * 100;
   };
-
-  if (loading) {
-    return <div className="p-8 text-center">Carregando inventário do servidor...</div>;
-  }
 
   return (
     <div className="p-8">

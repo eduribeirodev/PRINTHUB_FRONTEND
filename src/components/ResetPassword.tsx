@@ -5,8 +5,11 @@ import { Lock, Eye, EyeOff, Box, CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import api from '../services/api';
 
 interface ResetPasswordProps {
+  email: string;
+  resetToken: string;
   onNavigateToLogin: () => void;
 }
 
@@ -15,7 +18,7 @@ interface ResetPasswordFormData {
   password_confirmation: string;
 }
 
-export function ResetPassword({ onNavigateToLogin }: ResetPasswordProps) {
+export function ResetPassword({ email, resetToken, onNavigateToLogin }: ResetPasswordProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showpassword_confirmation, setShowpassword_confirmation] = useState(false);
 
@@ -28,17 +31,19 @@ export function ResetPassword({ onNavigateToLogin }: ResetPasswordProps) {
 
   const password = watch('password');
 
-  const onSubmit = (data: ResetPasswordFormData) => {
-    console.log('Reset password data:', data);
+  const onSubmit = async (data: ResetPasswordFormData) => {
+    try {
+      await api.post('/password/reset', { email, token: resetToken, ...data });
     
     toast.success('Senha redefinida!', {
       description: 'Sua senha foi alterada com sucesso. Você já pode fazer login.',
       duration: 4000,
     });
     
-    setTimeout(() => {
-      onNavigateToLogin();
-    }, 2000);
+      setTimeout(onNavigateToLogin, 2000);
+    } catch (error: any) {
+      toast.error('Não foi possível redefinir a senha.', { description: error.response?.data?.message || 'Tente novamente.' });
+    }
   };
 
   // Validações de senha
