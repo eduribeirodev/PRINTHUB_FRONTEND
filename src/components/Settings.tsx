@@ -5,8 +5,23 @@ import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 import { Separator } from './ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import api from '../services/api';
+
+const defaultSettings = { workspace: 'Meu PrintHub', currency: 'BRL', emailNotifications: true, lowStockAlerts: true, energyCost: '0.75', printerPower: '250', includeEnergyCost: true, autoArchive: false, autoUpdateInventory: true };
 
 export function Settings() {
+  const [settings, setSettings] = useState(defaultSettings);
+  const [savedSettings, setSavedSettings] = useState(defaultSettings);
+  const [isSaving, setIsSaving] = useState(false);
+  useEffect(() => { api.get('/settings').then((response) => { const loadedSettings = { ...defaultSettings, ...response.data }; setSettings(loadedSettings); setSavedSettings(loadedSettings); }).catch(() => undefined); }, []);
+  const saveSettings = async () => {
+    setIsSaving(true);
+    try { await api.put('/settings', settings); setSavedSettings(settings); toast.success('Configurações salvas.'); }
+    catch (error: any) { toast.error('Não foi possível salvar as configurações.', { description: error.response?.data?.message }); }
+    finally { setIsSaving(false); }
+  };
   return (
     <div className="p-8 ">
       <div className="mb-8">
@@ -20,12 +35,12 @@ export function Settings() {
           <div className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="workspace">Nome do Workspace</Label>
-              <Input id="workspace" defaultValue="Meu PrintHub" />
+              <Input id="workspace" value={settings.workspace} onChange={(event) => setSettings({ ...settings, workspace: event.target.value })} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="currency">Moeda</Label>
-              <Select defaultValue="BRL">
+              <Select value={settings.currency} onValueChange={(currency) => setSettings({ ...settings, currency })}>
                 <SelectTrigger id="currency">
                   <SelectValue />
                 </SelectTrigger>
@@ -44,7 +59,7 @@ export function Settings() {
                 <p>Notificações de E-mail</p>
                 <p className="text-[#6B7280]">Receber relatórios mensais</p>
               </div>
-              <Switch defaultChecked />
+              <Switch checked={settings.emailNotifications} onCheckedChange={(emailNotifications) => setSettings({ ...settings, emailNotifications })} />
             </div>
 
             <div className="flex items-center justify-between">
@@ -52,7 +67,7 @@ export function Settings() {
                 <p>Alertas de Estoque Baixo</p>
                 <p className="text-[#6B7280]">Notificar quando filamento estiver abaixo de 20%</p>
               </div>
-              <Switch defaultChecked />
+              <Switch checked={settings.lowStockAlerts} onCheckedChange={(lowStockAlerts) => setSettings({ ...settings, lowStockAlerts })} />
             </div>
           </div>
         </Card>
@@ -63,13 +78,13 @@ export function Settings() {
           <div className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="energyCost">Custo de Energia (R$/kWh)</Label>
-              <Input id="energyCost" type="number" defaultValue="0.75" />
+              <Input id="energyCost" type="number" value={settings.energyCost} onChange={(event) => setSettings({ ...settings, energyCost: event.target.value })} />
               <p className="text-[#6B7280]">Usado para calcular custo de energia nas impressões</p>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="printerPower">Potência Média da Impressora (W)</Label>
-              <Input id="printerPower" type="number" defaultValue="250" />
+              <Input id="printerPower" type="number" value={settings.printerPower} onChange={(event) => setSettings({ ...settings, printerPower: event.target.value })} />
             </div>
 
             <Separator />
@@ -79,7 +94,7 @@ export function Settings() {
                 <p>Incluir Custo de Energia nos Relatórios</p>
                 <p className="text-[#6B7280]">Adicionar estimativa de energia aos custos</p>
               </div>
-              <Switch defaultChecked />
+              <Switch checked={settings.includeEnergyCost} onCheckedChange={(includeEnergyCost) => setSettings({ ...settings, includeEnergyCost })} />
             </div>
           </div>
         </Card>
@@ -93,7 +108,7 @@ export function Settings() {
                 <p>Auto-arquivar Jobs Concluídos</p>
                 <p className="text-[#6B7280]">Mover automaticamente para arquivo após 30 dias</p>
               </div>
-              <Switch />
+              <Switch checked={settings.autoArchive} onCheckedChange={(autoArchive) => setSettings({ ...settings, autoArchive })} />
             </div>
 
             <div className="flex items-center justify-between">
@@ -101,15 +116,15 @@ export function Settings() {
                 <p>Atualizar Inventário Automaticamente</p>
                 <p className="text-[#6B7280]">Reduzir estoque ao mover job para "Concluído"</p>
               </div>
-              <Switch defaultChecked />
+              <Switch checked={settings.autoUpdateInventory} onCheckedChange={(autoUpdateInventory) => setSettings({ ...settings, autoUpdateInventory })} />
             </div>
           </div>
         </Card>
 
         {/* Botão de Salvar */}
         <div className="flex justify-end gap-4">
-          <Button variant="outline">Cancelar</Button>
-          <Button style={{ backgroundColor: '#4C00FF' }}>Salvar Alterações</Button>
+          <Button variant="outline" onClick={() => setSettings(savedSettings)} disabled={isSaving}>Cancelar</Button>
+          <Button style={{ backgroundColor: '#4C00FF' }} onClick={saveSettings} disabled={isSaving}>{isSaving ? 'Salvando...' : 'Salvar Alterações'}</Button>
         </div>
       </div>
     </div>
