@@ -11,16 +11,41 @@ import api from '../services/api';
 
 const defaultSettings = { workspace: 'Meu PrintHub', currency: 'BRL', emailNotifications: true, lowStockAlerts: true, energyCost: '0.75', printerPower: '250', includeEnergyCost: true, autoArchive: false, autoUpdateInventory: true };
 
+const normalizeSettings = (payload: any) => ({
+  ...defaultSettings,
+  ...(payload?.settings ?? payload ?? {}),
+});
+
 export function Settings() {
   const [settings, setSettings] = useState(defaultSettings);
   const [savedSettings, setSavedSettings] = useState(defaultSettings);
   const [isSaving, setIsSaving] = useState(false);
-  useEffect(() => { api.get('/settings').then((response) => { const loadedSettings = { ...defaultSettings, ...response.data }; setSettings(loadedSettings); setSavedSettings(loadedSettings); }).catch(() => undefined); }, []);
+
+  useEffect(() => {
+    api.get('/settings')
+      .then((response) => {
+        const loadedSettings = normalizeSettings(response.data);
+        setSettings(loadedSettings);
+        setSavedSettings(loadedSettings);
+      })
+      .catch(() => undefined);
+  }, []);
+
   const saveSettings = async () => {
     setIsSaving(true);
-    try { await api.put('/settings', settings); setSavedSettings(settings); toast.success('Configurações salvas.'); }
-    catch (error: any) { toast.error('Não foi possível salvar as configurações.', { description: error.response?.data?.message }); }
-    finally { setIsSaving(false); }
+    try {
+      const payload = { settings };
+      const response = await api.put('/settings', payload);
+      const nextSettings = normalizeSettings(response.data ?? settings);
+      setSettings(nextSettings);
+      setSavedSettings(nextSettings);
+      toast.success('Configurações salvas.');
+    } catch (error: any) {
+      const message = error.response?.data?.message || 'Verifique os dados e tente novamente.';
+      toast.error('Não foi possível salvar as configurações.', { description: message });
+    } finally {
+      setIsSaving(false);
+    }
   };
   return (
     <div className="p-8 ">
