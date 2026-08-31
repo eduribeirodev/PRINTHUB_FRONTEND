@@ -9,12 +9,11 @@ import api from '../services/api';
 interface LoginProps {
   onLogin: () => void;
   onNavigateToRegister: () => void;
-  onNavigateToForgotPassword: () => void;
 }
 
 interface LoginFormData { email: string; password: string; }
 
-export function Login({ onLogin, onNavigateToRegister, onNavigateToForgotPassword }: LoginProps) {
+export function Login({ onLogin, onNavigateToRegister }: LoginProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -56,7 +55,6 @@ export function Login({ onLogin, onNavigateToRegister, onNavigateToForgotPasswor
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div className="space-y-2"><Label htmlFor="email">E-mail</Label><div className="relative"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" /><Input id="email" type="email" placeholder="seu@email.com" className="pl-10" {...register('email', { required: 'Informe seu e-mail.' })} /></div>{errors.email && <p className="text-sm text-red-600">{errors.email.message}</p>}</div>
             <div className="space-y-2"><Label htmlFor="password">Senha</Label><div className="relative"><Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" /><Input id="password" type={showPassword ? 'text' : 'password'} placeholder="••••••••" className="pl-10 pr-10" {...register('password', { required: 'Informe sua senha.' })} /><button type="button" onClick={() => setShowPassword((visible) => !visible)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#1E1E1E]" aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}</button></div>{errors.password && <p className="text-sm text-red-600">{errors.password.message}</p>}</div>
-            <div className="flex justify-end"><button type="button" onClick={onNavigateToForgotPassword} className="text-[#4C00FF] hover:underline">Esqueceu sua senha?</button></div>
             <Button type="submit" className="w-full" style={{ backgroundColor: '#4C00FF' }} disabled={loading}>{loading ? 'Entrando...' : 'Entrar'}</Button>
             <p className="text-center text-[#6B7280]">Ainda não tem conta?{' '}<button type="button" onClick={onNavigateToRegister} className="text-[#4C00FF] hover:underline">Cadastre-se aqui</button></p>
           </form>

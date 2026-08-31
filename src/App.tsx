@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Component, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { KanbanBoard } from './components/KanbanBoard';
@@ -10,18 +10,15 @@ import { History } from './components/History';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
 import { TermsOfUse } from './components/TermsOfUse';
-import { ForgotPassword } from './components/ForgotPassword';
-import { VerifyCode } from './components/VerifyCode';
-import { ResetPassword } from './components/ResetPassword';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
 import api from './services/api';
 
-export interface Job { id: string; fileName: string; estimatedTime: string; estimatedCost: string; status: 'backlog' | 'todo' | 'inProgress' | 'approval' | 'completed'; quantity?: number; materialWeight?: string; layers?: string; filamentIds: string[]; }
+export interface Job { id: string; fileName: string; estimatedTime: string; estimatedCost: string; status: 'backlog' | 'todo' | 'inProgress' | 'approval' | 'completed'; quantity?: number; materialWeight?: string; layers?: string; filamentIds: string[]; filamentWeights?: number[]; }
 export interface HistoryJob extends Omit<Job, 'status'> { completedDate: string; month: string; }
 export interface Filament { id: string; color: string; colorHex: string; brand: string; type: string; pricePerKg: number; initialQuantity: number; remainingQuantity: number; }
 export type ApiFilament = { id: number; brand: string; type: string; colorName: string; colorHex: string; pricePerKg: string | number; initialQuantity: string | number; currentQuantity: string | number; };
-export type ApiJob = { id: number; fileName: string; status: 'BACKLOG' | 'TODO' | 'INPROGRESS' | 'APPROVAL' | 'COMPLETED'; estimatedTimeMinutes: number; estimatedCost: string | number; quantity: number; materialWeightGrams: string | number; layers: number; created_at: string; updated_at: string; completed_at?: string | null; filaments?: ApiFilament[]; };
+export type ApiJob = { id: number; fileName: string; status: 'BACKLOG' | 'TODO' | 'INPROGRESS' | 'APPROVAL' | 'COMPLETED'; estimatedTimeMinutes: number; estimatedCost: string | number; quantity: number; materialWeightGrams: string | number; layers: number; created_at: string; updated_at: string; completed_at?: string | null; filaments?: Array<ApiFilament & { pivot?: { weight_grams: string | number } }>; };
 
 const statusFromApi: Record<ApiJob['status'], Job['status']> = { BACKLOG: 'backlog', TODO: 'todo', INPROGRESS: 'inProgress', APPROVAL: 'approval', COMPLETED: 'completed' };
 export const getFilamentNames = (ids: string[], filaments: Filament[]) => {
@@ -29,26 +26,67 @@ export const getFilamentNames = (ids: string[], filaments: Filament[]) => {
   return names.length ? names.join(' + ') : 'Sem filamento';
 };
 export const mapFilament = (filament: ApiFilament): Filament => ({ id: String(filament.id), color: filament.colorName, colorHex: filament.colorHex, brand: filament.brand, type: filament.type, pricePerKg: Number(filament.pricePerKg), initialQuantity: Number(filament.initialQuantity), remainingQuantity: Number(filament.currentQuantity) });
-export const mapJob = (job: ApiJob): Job => ({ id: String(job.id), fileName: job.fileName, estimatedTime: `${Math.floor(job.estimatedTimeMinutes / 60)}h ${job.estimatedTimeMinutes % 60}m`, estimatedCost: `R$ ${Number(job.estimatedCost).toFixed(2)}`, status: statusFromApi[job.status], quantity: job.quantity, materialWeight: `${Number(job.materialWeightGrams)}g`, layers: String(job.layers), filamentIds: (job.filaments ?? []).map((filament) => String(filament.id)) });
+export const mapJob = (job: ApiJob): Job => ({ id: String(job.id), fileName: job.fileName, estimatedTime: `${Math.floor(job.estimatedTimeMinutes / 60)}h ${job.estimatedTimeMinutes % 60}m`, estimatedCost: `R$ ${Number(job.estimatedCost).toFixed(2)}`, status: statusFromApi[job.status], quantity: job.quantity, materialWeight: `${Number(job.materialWeightGrams)}g`, layers: String(job.layers), filamentIds: (job.filaments ?? []).map((filament) => String(filament.id)), filamentWeights: (job.filaments ?? []).map((filament) => Number(filament.pivot?.weight_grams ?? 0)) });
 export const mapHistoryJob = (job: ApiJob): HistoryJob => { const completedAt = new Date(job.completed_at ?? job.updated_at); return { ...mapJob(job), completedDate: completedAt.toLocaleDateString('pt-BR'), month: completedAt.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) }; };
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('App crashed:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[#F8F7FF] p-6">
+          <div className="max-w-md w-full rounded-2xl border border-[#E9D5FF] bg-white p-8 text-center shadow-sm">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#F3E8FF] text-[#4C00FF] text-2xl">!</div>
+            <h2 className="text-2xl font-semibold text-[#1E1E1E]">Ops, algo quebrou na tela.</h2>
+            <p className="mt-3 text-[#6B7280]">
+              A aplicação foi recarregada com segurança para evitar uma tela em branco.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="mt-6 inline-flex items-center justify-center rounded-md bg-[#4C00FF] px-4 py-2 text-white hover:opacity-90"
+            >
+              Recarregar
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
-  const [authScreen, setAuthScreen] = useState<'login' | 'register' | 'terms' | 'forgot-password' | 'verify-code' | 'reset-password'>('login');
+  const [authScreen, setAuthScreen] = useState<'login' | 'register' | 'terms'>('login');
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [selectedJobId, setSelectedJobId] = useState<string>();
-  const [recoveryEmail, setRecoveryEmail] = useState('');
-  const [recoveryToken, setRecoveryToken] = useState('');
   const [historyJobs, setHistoryJobs] = useState<HistoryJob[]>([]);
   const [filaments, setFilaments] = useState<Filament[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [energyCost, setEnergyCost] = useState(0.18);
+  const [printerPower, setPrinterPower] = useState(250);
+  const [includeEnergyCost, setIncludeEnergyCost] = useState(true);
 
   const loadData = useCallback(async () => {
-    const [filamentsResponse, jobsResponse] = await Promise.all([api.get<ApiFilament[]>('/filaments'), api.get<ApiJob[]>('/jobs')]);
+    const [filamentsResponse, jobsResponse, settingsResponse] = await Promise.all([api.get<ApiFilament[]>('/filaments'), api.get<ApiJob[]>('/jobs'), api.get('/settings')]);
     setFilaments(filamentsResponse.data.map(mapFilament));
     setJobs(jobsResponse.data.map(mapJob));
     setHistoryJobs(jobsResponse.data.filter((job) => job.status === 'COMPLETED').map(mapHistoryJob));
+    setEnergyCost(Number(settingsResponse.data.settings?.energyCost ?? 0.18));
+    setPrinterPower(Number(settingsResponse.data.settings?.printerPower ?? 250));
+    setIncludeEnergyCost(settingsResponse.data.settings?.includeEnergyCost ?? true);
   }, []);
 
   useEffect(() => {
@@ -68,18 +106,23 @@ export default function App() {
   if (!isAuthenticated) {
     if (authScreen === 'register') return <Register onRegister={handleAuthenticated} onNavigateToLogin={() => setAuthScreen('login')} onNavigateToTerms={() => setAuthScreen('terms')} />;
     if (authScreen === 'terms') return <TermsOfUse onNavigateBack={() => setAuthScreen('register')} />;
-    if (authScreen === 'forgot-password') return <ForgotPassword onNavigateToLogin={() => setAuthScreen('login')} onNavigateToVerifyCode={(email) => { setRecoveryEmail(email); setAuthScreen('verify-code'); }} />;
-    if (authScreen === 'verify-code') return <VerifyCode email={recoveryEmail} onNavigateToLogin={() => setAuthScreen('login')} onNavigateToResetPassword={(token) => { setRecoveryToken(token); setAuthScreen('reset-password'); }} />;
-    if (authScreen === 'reset-password') return <ResetPassword email={recoveryEmail} resetToken={recoveryToken} onNavigateToLogin={() => setAuthScreen('login')} />;
-    return <Login onLogin={handleAuthenticated} onNavigateToRegister={() => setAuthScreen('register')} onNavigateToForgotPassword={() => setAuthScreen('forgot-password')} />;
+    return <Login onLogin={handleAuthenticated} onNavigateToRegister={() => setAuthScreen('register')} />;
   }
-  return <div className="flex h-screen bg-white overflow-hidden"><Toaster position="top-right" richColors /><Sidebar currentScreen={currentScreen} onNavigate={handleNavigate} onLogout={handleLogout} /><main className="flex-1 overflow-y-auto">
-    {currentScreen === 'dashboard' && <Dashboard onNavigate={handleNavigate} jobs={jobs} historyJobs={historyJobs} filaments={filaments} />}
-    {currentScreen === 'kanban' && <KanbanBoard onNavigate={handleNavigate} jobs={jobs} onJobStatusUpdated={handleJobStatusUpdated} filaments={filaments} />}
-    {currentScreen === 'history' && <History historyJobs={historyJobs} onRemoveFromHistory={handleRemoveFromHistory} onNavigate={handleNavigate} filaments={filaments} />}
-    {currentScreen === 'job-details' && <JobDetails onNavigate={handleNavigate} onAddJob={handleJobCreated} availableFilaments={filaments} jobId={selectedJobId} jobs={jobs} historyJobs={historyJobs} />}
-    {currentScreen === 'inventory' && <FilamentInventory filaments={filaments} setFilaments={setFilaments} />}
-    {currentScreen === 'reports' && <Reports historyJobs={historyJobs} filaments={filaments} />}
-    {currentScreen === 'settings' && <Settings />}
-  </main></div>;
+  return (
+    <AppErrorBoundary>
+      <div className="flex h-screen bg-white overflow-hidden">
+        <Toaster position="top-right" richColors />
+        <Sidebar currentScreen={currentScreen} onNavigate={handleNavigate} onLogout={handleLogout} />
+        <main className="flex-1 overflow-y-auto">
+          {currentScreen === 'dashboard' && <Dashboard onNavigate={handleNavigate} jobs={jobs} historyJobs={historyJobs} filaments={filaments} />}
+          {currentScreen === 'kanban' && <KanbanBoard onNavigate={handleNavigate} jobs={jobs} onJobStatusUpdated={handleJobStatusUpdated} onDeleteJob={handleRemoveFromHistory} filaments={filaments} />}
+          {currentScreen === 'history' && <History historyJobs={historyJobs} onRemoveFromHistory={handleRemoveFromHistory} onNavigate={handleNavigate} filaments={filaments} />}
+          {currentScreen === 'job-details' && <JobDetails onNavigate={handleNavigate} onAddJob={handleJobCreated} availableFilaments={filaments} jobId={selectedJobId} jobs={jobs} historyJobs={historyJobs} />}
+          {currentScreen === 'inventory' && <FilamentInventory filaments={filaments} setFilaments={setFilaments} jobs={jobs} />}
+          {currentScreen === 'reports' && <Reports historyJobs={historyJobs} filaments={filaments} energyCost={energyCost} printerPower={printerPower} includeEnergyCost={includeEnergyCost} />}
+          {currentScreen === 'settings' && <Settings />}
+        </main>
+      </div>
+    </AppErrorBoundary>
+  );
 }
