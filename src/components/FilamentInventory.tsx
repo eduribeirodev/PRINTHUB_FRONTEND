@@ -9,8 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Pencil, Trash2, Plus, AlertCircle } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { HexColorPicker } from 'react-colorful';
+import { toast } from 'sonner';
 import api from '../services/api'; 
-import { Filament, mapFilament } from '../App';
+import { type Filament, mapFilament } from '../utils/printHub';
+
+const purplePalette = ['#4C00FF', '#6D28D9', '#7C3AED', '#8B5CF6', '#A78BFA', '#C4B5FD', '#E9D5FF', '#F3E8FF'];
 
 interface FilamentFormData {
   color: string;
@@ -140,13 +143,14 @@ function FilamentFormDialogContent({
 interface FilamentInventoryProps {
   filaments: Filament[];
   setFilaments: React.Dispatch<React.SetStateAction<Filament[]>>;
+  jobs?: { id: string; filamentIds: string[]; status?: string }[];
 }
 
-export function FilamentInventory({ filaments, setFilaments }: FilamentInventoryProps) {
+export function FilamentInventory({ filaments, setFilaments, jobs = [] }: FilamentInventoryProps) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingFilamentId, setEditingFilamentId] = useState<string | null>(null);
-  
+
   const [formData, setFormData] = useState<FilamentFormData>({
     color: '',
     colorHex: '#9CA3AF',
@@ -225,13 +229,32 @@ export function FilamentInventory({ filaments, setFilaments }: FilamentInventory
     }
   };
 
+  const getFilamentLockReason = (id: string) => {
+    const linkedJobs = jobs.filter((job) => job.filamentIds.includes(id) && job.status !== 'completed');
+    if (linkedJobs.length === 0) return null;
+
+    const names = linkedJobs.map((job) => job.id || 'job sem nome');
+    return `Este filamento está vinculado a um job em andamento (${names.join(', ')}). Não pode ser excluído enquanto a impressão não for finalizada.`;
+  };
+
   // 4. DELETAR FILAMENTO DO BANCO
   const handleDeleteFilament = async (id: string) => {
+    const reason = getFilamentLockReason(id);
+
+    if (reason) {
+      toast.error('Exclusão bloqueada.', {
+        description: reason,
+      });
+      return;
+    }
+
     try {
       await api.delete(`/filaments/${id}`);
       setFilaments(filaments.filter(f => f.id !== id));
-    } catch (error) {
-      console.error("Erro ao deletar filamento:", error);
+      toast.success('Filamento removido com sucesso.');
+    } catch (error: any) {
+      const message = error.response?.data?.message || 'Não foi possível excluir este filamento.';
+      toast.error('Erro ao deletar filamento.', { description: message });
     }
   };
 
@@ -305,6 +328,7 @@ export function FilamentInventory({ filaments, setFilaments }: FilamentInventory
               filaments.map((filament) => {
                 const percentage = getPercentageRemaining(filament);
                 const isLow = percentage < 20;
+                const lockReason = getFilamentLockReason(filament.id);
                 
                 return (
                   <TableRow key={filament.id}>
@@ -332,6 +356,11 @@ export function FilamentInventory({ filaments, setFilaments }: FilamentInventory
                             Baixo
                           </Badge>
                         )}
+                        {lockReason && (
+                          <Badge variant="outline" className="border-red-200 text-red-600">
+                            Em uso
+                          </Badge>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
@@ -347,6 +376,7 @@ export function FilamentInventory({ filaments, setFilaments }: FilamentInventory
                           variant="ghost" 
                           size="icon"
                           onClick={() => handleDeleteFilament(filament.id)}
+                          title={lockReason || 'Excluir filamento'}
                         >
                           <Trash2 className="w-4 h-4 text-red-500" />
                         </Button>
