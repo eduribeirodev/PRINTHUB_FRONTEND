@@ -4,12 +4,13 @@ import { Button } from './ui/button';
 import { Clock, DollarSign, Droplet, Eye, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../services/api';
-import { ApiJob, Filament, getFilamentNames, Job, mapJob } from '../App';
+import { type ApiJob, type Filament, getFilamentNames, type Job, mapJob } from '../utils/printHub';
 
 interface KanbanBoardProps {
   onNavigate: (screen: string, jobId?: string) => void;
   jobs: Job[];
   onJobStatusUpdated: (job: Job) => void;
+  onDeleteJob: (jobId: string) => Promise<void>;
   filaments: Filament[];
 }
 
@@ -17,7 +18,7 @@ const apiStatus: Record<Job['status'], string> = {
   backlog: 'BACKLOG', todo: 'TODO', inProgress: 'INPROGRESS', approval: 'APPROVAL', completed: 'COMPLETED',
 };
 
-export function KanbanBoard({ onNavigate, jobs, onJobStatusUpdated, filaments }: KanbanBoardProps) {
+export function KanbanBoard({ onNavigate, jobs, onJobStatusUpdated, onDeleteJob, filaments }: KanbanBoardProps) {
   const [draggedJob, setDraggedJob] = useState<Job | null>(null);
   const [updatingJobId, setUpdatingJobId] = useState<string | null>(null);
 
@@ -33,6 +34,25 @@ export function KanbanBoard({ onNavigate, jobs, onJobStatusUpdated, filaments }:
     } finally {
       setDraggedJob(null);
       setUpdatingJobId(null);
+    }
+  };
+
+  const handleDeleteJob = async (jobId: string) => {
+    const job = jobs.find((item) => item.id === jobId);
+    const confirmMessage = job?.status === 'completed'
+      ? 'Deseja excluir este job concluído? O backend irá restaurar o estoque associado.'
+      : 'Deseja excluir este job? Ele será removido do fluxo atual.';
+
+    const shouldDelete = window.confirm(confirmMessage);
+    if (!shouldDelete) return;
+
+    try {
+      await onDeleteJob(jobId);
+      toast.success('Job removido com sucesso.');
+    } catch (error: any) {
+      toast.error('Não foi possível remover o job.', {
+        description: error.response?.data?.message || 'Verifique o status do job e tente novamente.',
+      });
     }
   };
 
@@ -67,19 +87,27 @@ export function KanbanBoard({ onNavigate, jobs, onJobStatusUpdated, filaments }:
                   <p className="text-white/90 mt-1">{columnJobs.length} jobs</p>
                 </header>
                 <div className="space-y-4 flex-1 min-h-28">
-                  {columnJobs.map((job) => (
-                    <Card key={job.id} className="p-4 cursor-move hover:shadow-lg transition-shadow" draggable={updatingJobId !== job.id} onDragStart={() => setDraggedJob(job)}>
-                      <div className="mb-3">
-                        <h4 className="mb-2">{job.fileName}</h4>
-                        <div className="flex items-center gap-2 text-[#6B7280]"><Droplet className="w-4 h-4 flex-none" /><span className="truncate">{getFilamentNames(job.filamentIds, filaments)}</span></div>
-                      </div>
-                      <div className="space-y-2 mb-4">
-                        <div className="flex items-center gap-2 text-[#6B7280]"><Clock className="w-4 h-4" />{job.estimatedTime}</div>
-                        <div className="flex items-center gap-2 text-[#6B7280]"><DollarSign className="w-4 h-4" />{job.estimatedCost}</div>
-                      </div>
-                      <Button variant="outline" size="sm" className="w-full" onClick={() => onNavigate('job-details', job.id)}><Eye className="w-4 h-4 mr-2" /> Detalhes</Button>
-                    </Card>
-                  ))}
+                  {columnJobs.map((job) => {
+                    const safeFilamentIds = Array.isArray(job.filamentIds) ? job.filamentIds : [];
+                    return (
+                      <Card key={job.id} className="p-4 cursor-move hover:shadow-lg transition-shadow" draggable={updatingJobId !== job.id} onDragStart={() => setDraggedJob(job)}>
+                        <div className="mb-3">
+                          <h4 className="mb-2">{job.fileName || 'Job sem nome'}</h4>
+                          <div className="flex items-center gap-2 text-[#6B7280]"><Droplet className="w-4 h-4 flex-none" /><span className="truncate">{getFilamentNames(safeFilamentIds, filaments)}</span></div>
+                        </div>
+                        <div className="space-y-2 mb-4">
+                          <div className="flex items-center gap-2 text-[#6B7280]"><Clock className="w-4 h-4" />{job.estimatedTime || '0h 0m'}</div>
+                          <div className="flex items-center gap-2 text-[#6B7280]"><DollarSign className="w-4 h-4" />{job.estimatedCost || 'R$ 0.00'}</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" className="flex-1" onClick={() => onNavigate('job-details', job.id)}><Eye className="w-4 h-4 mr-2" /> Detalhes</Button>
+                          <Button variant="outline" size="sm" className="text-red-600 hover:border-red-600 hover:text-red-700" onClick={() => handleDeleteJob(job.id)}>
+                            Excluir
+                          </Button>
+                        </div>
+                      </Card>
+                    );
+                  })}
                   {columnJobs.length === 0 && <div className="p-8 text-center text-[#6B7280] border-2 border-dashed border-gray-200 rounded-lg">Arraste jobs aqui</div>}
                 </div>
               </section>

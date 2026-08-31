@@ -8,7 +8,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
-import { Filament, getFilamentNames } from '../App';
+import { type Filament, getFilamentNames } from '../utils/printHub';
 
 interface HistoryJob {
   id: string;

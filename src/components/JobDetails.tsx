@@ -65,7 +65,7 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
   const [stlFile, setStlFile] = useState<File | null>(null);
   const [jobName, setJobName] = useState('');
   const [quantity, setQuantity] = useState(1);
-  const [selectedFilaments, setSelectedFilaments] = useState<string[]>(['']);
+  const [selectedFilaments, setSelectedFilaments] = useState<string[]>([]);
   
   // Estados para entrada manual
   const [manualHours, setManualHours] = useState('');
@@ -88,11 +88,37 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
     return `${filament.type} ${filament.color} - ${filament.brand}`;
   };
 
+  const getFilamentWeightBreakdown = () => {
+    const totalWeight = Number(manualWeight) || 0;
+    const totalColorChangeWeight = colorChanges.reduce((sum, change) => sum + (Number(change.weight) || 0), 0);
+    const baseWeight = Math.max(totalWeight - totalColorChangeWeight, 0);
+    const breakdown: Array<{ filamentId: string; grams: number }> = [];
+
+    if (selectedFilaments[0]) {
+      breakdown.push({ filamentId: selectedFilaments[0], grams: baseWeight });
+    }
+
+    colorChanges.forEach((change) => {
+      if (!change.filamentId) return;
+      const weight = Number(change.weight) || 0;
+      if (weight <= 0) return;
+
+      const existing = breakdown.find((item) => item.filamentId === change.filamentId);
+      if (existing) {
+        existing.grams += weight;
+      } else {
+        breakdown.push({ filamentId: change.filamentId, grams: weight });
+      }
+    });
+
+    return breakdown.filter((item) => item.grams > 0);
+  };
+
   // Carregar dados do job se estiver em modo de visualização/edição
   useEffect(() => {
     if (jobId) {
       // Procurar primeiro nos jobs ativos, depois no histórico
-      let existingJob = jobs.find(j => j.id === jobId);
+      let existingJob: AppJob | HistoryJob | undefined = jobs.find(j => j.id === jobId);
       let isHistoryJob = false;
       
       if (!existingJob) {
@@ -152,62 +178,90 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
   };
 
   const calculateCost = () => {
-    if (!manualWeight) return 0;
+    if (!manualWeight) return '0.00';
 
-    let totalCost = 0;
-
-    // Custo simples (uma cor)
-    const weightInKg = parseFloat(manualWeight) / 1000;
-    if (selectedFilaments[0]) {
-      const filament = availableFilaments.find(f => f.id === selectedFilaments[0]);
-      if (filament) {
-        totalCost = weightInKg * filament.pricePerKg;
-      }
-    }
+    const assignments = getFilamentAssignments();
+    const totalCost = assignments.reduce((cost, assignment) => {
+      const filament = availableFilaments.find(f => f.id === assignment.filamentId);
+      return cost + (filament ? (assignment.weight / 1000) * filament.pricePerKg : 0);
+    }, 0);
 
     return (totalCost * quantity).toFixed(2);
   };
 
+  const getFilamentAssignments = () => {
+    const totalWeight = Number(manualWeight) || 0;
+    const changeWeight = colorChanges.reduce((sum, change) => sum + change.weight, 0);
+    const assignments = selectedFilaments.slice(0, 1).map((filamentId) => ({
+      filamentId,
+      weight: totalWeight - changeWeight,
+    }));
+
+    colorChanges.forEach((change) => {
+      if (change.filamentId) {
+        const existing = assignments.find((assignment) => assignment.filamentId === change.filamentId);
+        if (existing) {
+          existing.weight += change.weight;
+        } else {
+          assignments.push({ filamentId: change.filamentId, weight: change.weight });
+        }
+      }
+    });
+
+    return assignments;
+  };
+
+  const hasEstimatedTime = () => {
+    return (Number(manualHours) || 0) > 0 || (Number(manualMinutes) || 0) > 0;
+  };
+
   const calculateTotalTime = () => {
-    if (!manualHours || !manualMinutes) return '';
-    
+    const hours = Number(manualHours) || 0;
+    const minutes = Number(manualMinutes) || 0;
+
+    if (!hasEstimatedTime()) return '';
+
     // Se quantidade é 1, retornar o tempo original
-    if (quantity === 1) return `${manualHours}h ${manualMinutes}m`;
-    
-    const totalMinutes = (parseInt(manualHours) * 60 + parseInt(manualMinutes)) * quantity;
+    if (quantity === 1) return `${hours}h ${minutes}m`;
+
+    const totalMinutes = (hours * 60 + minutes) * quantity;
     const totalHours = Math.floor(totalMinutes / 60);
     const remainingMinutes = Math.round(totalMinutes % 60);
-    
+
     return `${totalHours}h ${remainingMinutes}m`;
   };
 
   const isFormValid = () => {
     if (!stlFile) return false;
-    if (!manualHours || !manualMinutes || !manualWeight || !layers) return false;
+    if (!manualWeight || !layers) return false;
+    if (!hasEstimatedTime()) return false;
+    if (availableFilaments.length === 0) return false;
     if (!selectedFilaments[0]) return false;
+    if (hasMultipleColors && (colorChanges.some((change) => !change.filamentId || change.weight <= 0) ||
+      colorChanges.reduce((sum, change) => sum + change.weight, 0) >= Number(manualWeight))) return false;
     return true;
   };
 
   const handleCreateJob = async () => {
     if (!isFormValid() || !stlFile) return;
 
-    if (hasMultipleColors || selectedFilaments.length > 1) {
-      toast.error('Múltiplas cores ainda não são suportadas pela API.', {
-        description: 'O backend atual aceita somente um filamento por job.',
-      });
-      return;
-    }
-
     const totalMinutes = (Number(manualHours) * 60 + Number(manualMinutes)) * quantity;
-    const totalWeight = Number(manualWeight) * quantity;
     const formData = new FormData();
     formData.append('fileName', jobName || stlFile.name);
     formData.append('status', 'BACKLOG');
-    formData.append('filament_id', selectedFilaments[0]);
+    const assignments = getFilamentAssignments();
+    if (assignments.length === 1) {
+      formData.append('filament_id', assignments[0].filamentId);
+      formData.append('materialWeightGrams', String(assignments[0].weight));
+    } else {
+      assignments.forEach((assignment, index) => {
+        formData.append(`filaments[${index}][filament_id]`, assignment.filamentId);
+        formData.append(`filaments[${index}][weight_grams]`, String(assignment.weight));
+      });
+    }
     formData.append('estimatedTimeMinutes', String(totalMinutes));
-    formData.append('estimatedCost', calculateCost());
+    formData.append('estimatedCost', String(calculateCost()));
     formData.append('quantity', String(quantity));
-    formData.append('materialWeightGrams', String(totalWeight));
     formData.append('layers', layers);
     formData.append('stl_file', stlFile);
 
@@ -269,6 +323,7 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
                   selectedFilaments.map((filamentId, index) => {
                     const filament = availableFilaments.find(f => f.id === filamentId);
                     if (!filament) return null;
+                    const weightEntry = getFilamentWeightBreakdown().find((item) => item.filamentId === filamentId);
                     
                     return (
                       <div key={index} className="flex items-center gap-3 p-3 bg-[#F4F7FC] rounded-lg">
@@ -278,7 +333,9 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
                         />
                         <div className="flex-1">
                           <p className="font-medium">{getFilamentName(filament)}</p>
-                          <p className="text-sm text-[#6B7280]">R$ {filament.pricePerKg}/kg</p>
+                          <p className="text-sm text-[#6B7280]">
+                            {weightEntry ? `${weightEntry.grams}g` : 'Peso não informado'} · R$ {filament.pricePerKg}/kg
+                          </p>
                         </div>
                       </div>
                     );
@@ -293,7 +350,7 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
           {/* Coluna Direita */}
           <div className="space-y-6">
             {/* Resumo da Impressão */}
-            {(manualHours || manualMinutes) && (
+            {hasEstimatedTime() && (
               <Card className="p-6">
                 <h4 className="mb-4">Resumo da Impressão</h4>
                 <div className="space-y-4">
@@ -301,7 +358,7 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
                     <Clock className="w-5 h-5 text-[#4C00FF] mt-1" />
                     <div className="flex-1">
                       <p className="text-[#6B7280]">Tempo Total</p>
-                      <p className="text-lg"><strong>{calculateTotalTime() || `${manualHours}h ${manualMinutes}m`}</strong></p>
+                      <p className="text-lg"><strong>{calculateTotalTime() || `${Number(manualHours) || 0}h ${Number(manualMinutes) || 0}m`}</strong></p>
                     </div>
                   </div>
                   
@@ -461,7 +518,7 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
                       id="manual-hours"
                       type="number"
                       min="0"
-                      placeholder="Horas"
+                      placeholder="Horas (opcional)"
                       value={manualHours}
                       onChange={(e) => setManualHours(e.target.value)}
                     />
@@ -545,14 +602,23 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
               <h4>Filamento</h4>
             </div>
             <div className="space-y-4">
+              {availableFilaments.length === 0 && (
+                <Alert className="bg-[#FEF2F2] border-[#F87171]">
+                  <AlertCircle className="h-4 w-4 text-[#DC2626]" />
+                  <AlertDescription className="text-[#7F1D1D]">
+                    Nenhum filamento foi carregado pela API. Cadastre pelo menos um item no inventário antes de criar um job.
+                  </AlertDescription>
+                </Alert>
+              )}
               <div>
                 <Label htmlFor="filament-select">Filamento Principal (Cor Base)</Label>
                 <Select 
-                  value={selectedFilaments[0]} 
+                  value={selectedFilaments[0] ?? ''} 
                   onValueChange={(value) => setSelectedFilaments([value])}
+                  disabled={availableFilaments.length === 0}
                 >
                   <SelectTrigger id="filament-select" className="mt-2">
-                    <SelectValue placeholder="Escolha um filamento" />
+                    <SelectValue placeholder={availableFilaments.length === 0 ? 'Sem filamentos disponíveis' : 'Escolha um filamento'} />
                   </SelectTrigger>
                   <SelectContent>
                     {availableFilaments.map((filament) => (
@@ -705,7 +771,7 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
           </Card>
 
           {/* Resumo dos Dados Manuais */}
-          {manualHours && manualMinutes && manualWeight && (
+          {hasEstimatedTime() && manualWeight && (
             <Card className="p-6 bg-[#EDE9FE] border-[#4C00FF]">
               <h4 className="mb-4">Dados da Impressão</h4>
               <div className="space-y-3">
@@ -714,11 +780,11 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
                   <div className="flex-1">
                     <p className="text-[#6B7280]">Tempo Estimado</p>
                     <p className="text-lg">
-                      <strong>{manualHours}h {manualMinutes}m</strong>
+                      <strong>{`${Number(manualHours) || 0}h ${Number(manualMinutes) || 0}m`}</strong>
                       {quantity > 1 && (
                         <span className="text-sm text-[#6B7280] ml-2">
                           (×{quantity} = {(() => {
-                            const totalMinutes = (parseInt(manualHours) * 60 + parseInt(manualMinutes)) * quantity;
+                            const totalMinutes = ((Number(manualHours) || 0) * 60 + (Number(manualMinutes) || 0)) * quantity;
                             const hours = Math.floor(totalMinutes / 60);
                             const minutes = Math.round(totalMinutes % 60);
                             return `${hours}h ${minutes}m`;
@@ -731,7 +797,11 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
                 <div className="flex items-start gap-3">
                   <Droplet className="w-5 h-5 text-[#4C00FF] mt-1" />
                   <div className="flex-1">
-                    <p className="text-[#6B7280]">Total em gramas da cor {filament.name}</p>
+                    <p className="text-[#6B7280]">
+                      {selectedFilaments[0]
+                        ? `Total em gramas da cor ${getFilamentName(availableFilaments.find(f => f.id === selectedFilaments[0]) ?? availableFilaments[0])}`
+                        : 'Total em gramas'}
+                    </p>
                     <p className="text-lg">
                       <strong>{manualWeight}g</strong>
                       {quantity > 1 && (
@@ -755,9 +825,9 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
                   <DollarSign className="w-5 h-5 text-[#4C00FF] mt-1" />
                   <div className="flex-1">
                     <p className="text-[#6B7280]">Custo de Material</p>
-                    {quantity > 1 && parseFloat(calculateCost()) > 0 && (
+                    {quantity > 1 && Number(calculateCost()) > 0 && (
                       <p className="text-[#6B7280]">
-                        R$ {(parseFloat(calculateCost()) / quantity).toFixed(2)} × {quantity} unidades
+                        R$ {(Number(calculateCost()) / quantity).toFixed(2)} × {quantity} unidades
                       </p>
                     )}
                     <p className="text-[#4C00FF] mt-1">
@@ -777,7 +847,7 @@ export function JobDetails({ onNavigate, onAddJob, availableFilaments: available
               onClick={handleCreateJob}
               disabled={!isFormValid()}
             >
-              Adicionar ao Backlog
+              {availableFilaments.length === 0 ? 'Cadastre um Filamento Primeiro' : 'Adicionar ao Backlog'}
             </Button>
             <Button 
               variant="outline" 
